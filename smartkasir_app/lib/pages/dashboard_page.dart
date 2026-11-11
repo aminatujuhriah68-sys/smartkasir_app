@@ -1,9 +1,13 @@
+// Mengimpor antarmuka Material Design Flutter
 import 'package:flutter/material.dart';
+// Mengimpor format mata uang
 import 'package:intl/intl.dart';
-
+// Mengimpor model data, database helper, dan formulir produk
 import '../models/produk.dart';
+import '../helpers/database_helper.dart';
+import 'form_produk_page.dart';
 
-/// Halaman beranda kasir: ringkasan omzet, filter kategori, dan katalog produk.
+// Halaman Beranda & Katalog Kasir SmartKasir
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -12,358 +16,578 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  // --- Konfigurasi tampilan ---
-  static const Color _biruNavy = Color(0xFF1E3A8A);
-  static const double _tinggiGambar = 125;
-
-  /// Opsi filter kategori (indeks 0 = tampilkan semua).
-  static const List<String> _kategoriList = [
-    'Semua',
-    'Makanan',
-    'Minuman',
-    'Snack',
-  ];
-
-  final NumberFormat _formatCurrency = NumberFormat.currency(
-    locale: 'id_ID',
-    symbol: 'Rp ',
-    decimalDigits: 0,
-  );
-
-  // --- State ---
+  // Indeks kategori aktif terpilih
   int _kategoriTerpilih = 0;
+  final List<String> _kategoriList = ['Semua', 'Makanan', 'Minuman', 'Snack', 'Dessert'];
 
-  // --- Logika bisnis ---
+  // Variabel penampung hasil asinkron basis data SQLite
+  late Future<List<Produk>> _produkFuture;
 
-  /// Contoh: 18000.0 -> "Rp 18.000".
-  String _formatRupiah(double nominal) => _formatCurrency.format(nominal);
+  // Controller kotak pencarian
+  final _searchController = TextEditingController();
+  String _keywordPencarian = '';
 
-  /// Daftar produk yang tampil sesuai kategori terpilih.
-  List<Produk> get _produkTampil {
-    if (_kategoriTerpilih == 0) return daftarProdukDummy;
-
-    final kategori = _kategoriList[_kategoriTerpilih];
-    return daftarProdukDummy.where((p) => p.kategori == kategori).toList();
+  // Format mata uang Rupiah
+  String _formatRupiah(double nominal) {
+    final formatCurrency = NumberFormat.currency(
+      locale: 'id_ID',
+      symbol: 'Rp ',
+      decimalDigits: 0,
+    );
+    return formatCurrency.format(nominal);
   }
-
-  // --- Build utama ---
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildBannerOmzet(),
-          _buildFilterKategori(),
-          const SizedBox(height: 8),
-          Expanded(child: _buildKatalog()),
-        ],
-      ),
-    );
+  void initState() {
+    super.initState();
+    // Memuat data produk pertama kali saat dashboard dibuka
+    _muatDataProduk();
   }
 
-  // --- App bar ---
-
-  AppBar _buildAppBar() {
-    return AppBar(
-      title: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.point_of_sale, color: Colors.amber, size: 24),
-          SizedBox(width: 8),
-          Text(
-            'SmartKasir',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-        ],
-      ),
-      actions: [
-        IconButton(
-          tooltip: 'Notifikasi Penjualan',
-          icon: const Icon(Icons.notifications_none),
-          onPressed: () {}, // TODO: aksi notifikasi
-        ),
-      ],
-    );
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
-  // --- Blok 1: banner omzet hari ini ---
+  // Helper method untuk memuat ulang data katalog dari SQLite
+  void _muatDataProduk() {
+    setState(() {
+      if (_keywordPencarian.trim().isNotEmpty) {
+        // KONTROL PERCABANGAN: Jika ada pencarian, gunakan searchProduk (SQL LIKE)
+        _produkFuture = DatabaseHelper.instance.searchProduk(
+          _keywordPencarian.trim(),
+        );
+      } else {
+        // Jika tidak mencari, filter berdasarkan kategori
+        _produkFuture = DatabaseHelper.instance.getProdukByKategori(
+          _kategoriList[_kategoriTerpilih],
+        );
+      }
+    });
+  }
 
-  Widget _buildBannerOmzet() {
-    return Container(
-      margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [_biruNavy, Color(0xFF3B82F6)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  // --- LOGIKA DIALOG KONFIRMASI HAPUS PRODUK (MODAL ALERTDIALOG) ---
+  void _konfirmasiHapusProduk(BuildContext context, Produk item) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Hapus Produk?'),
+          ],
         ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+        content: Text(
+          'Apakah Anda yakin ingin menghapus "${item.nama}" dari database SQLite? Data yang dihapus tidak dapat dipulihkan kembali.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Total Penjualan Hari Ini',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _formatRupiah(845000),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx); // Tutup dialog modal
+
+              // Eksekusi DELETE ke SQLite
+              await DatabaseHelper.instance.deleteProduk(item.id!);
+
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Produk "${item.nama}" berhasil dihapus dari database!',
+                  ),
+                  backgroundColor: Colors.red.shade700,
+                  behavior: SnackBarBehavior.floating,
                 ),
-              ),
-            ],
-          ),
-          _buildKapsulTransaksi(),
-        ],
-      ),
-    );
-  }
+              );
 
-  Widget _buildKapsulTransaksi() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.receipt_long, color: Colors.white, size: 16),
-          SizedBox(width: 4),
-          Text(
-            '34 Transaksi',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
+              // Muat ulang katalog beranda
+              _muatDataProduk();
+            },
+            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  // --- Blok 2: filter kategori (chip horizontal) ---
-
-  Widget _buildFilterKategori() {
-    return SizedBox(
-      height: 42,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: _kategoriList.length,
-        itemBuilder: (context, index) {
-          final isSelected = _kategoriTerpilih == index;
-
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              label: Text(_kategoriList[index]),
-              selected: isSelected,
-              selectedColor: _biruNavy,
-              labelStyle: TextStyle(
-                color: isSelected ? Colors.white : Colors.black87,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                fontSize: 12,
-              ),
-              onSelected: (_) => setState(() => _kategoriTerpilih = index),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // --- Blok 3: katalog produk (grid 2 kolom) ---
-
-  Widget _buildKatalog() {
-    final produkList = _produkTampil;
-
-    if (produkList.isEmpty) {
-      return const Center(child: Text('Tidak ada produk pada kategori ini'));
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 0.90,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: produkList.length,
-      itemBuilder: (context, index) => _buildKartuProduk(produkList[index]),
-    );
-  }
-
-  Widget _buildKartuProduk(Produk produk) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [_buildFotoProduk(produk), _buildInfoProduk(produk)],
-      ),
-    );
-  }
-
-  /// Foto produk dengan badge promo (jika ada diskon) di pojok kiri atas.
-  Widget _buildFotoProduk(Produk produk) {
-    return Stack(
-      children: [
-        Image.network(
-          produk.gambarUrl,
-          height: _tinggiGambar,
-          width: double.infinity,
-          fit: BoxFit.cover,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Container(
-              height: _tinggiGambar,
-              color: Colors.grey.shade200,
-              child: const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) => Container(
-            height: _tinggiGambar,
-            color: Colors.grey.shade300,
-            child: const Center(
-              child: Icon(Icons.broken_image, color: Colors.grey, size: 36),
-            ),
-          ),
-        ),
-        if (produk.diskonPersen > 0)
-          Positioned(
-            top: 6,
-            left: 6,
-            child: _buildBadgePromo(produk.diskonPersen),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildBadgePromo(int diskonPersen) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.red.shade700,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        'PROMO $diskonPersen%',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  /// Nama, badge stok, harga, dan tombol tambah.
-  Widget _buildInfoProduk(Produk produk) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            produk.nama,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          ),
-          const SizedBox(height: 3),
-          _buildBadgeStok(produk.stok),
-          const SizedBox(height: 3),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _formatRupiah(produk.harga),
-                style: TextStyle(
-                  color: Colors.blue.shade900,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-              _buildTombolTambah(produk),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Badge indikator stok: merah (habis), kuning (<= 5), hijau (aman).
+  // Helper pembuat badge stok indikator
   Widget _buildBadgeStok(int stok) {
-    final MaterialColor warna;
-    final String label;
+    Color warnaLatar;
+    Color warnaTeks;
+    String label;
 
     if (stok == 0) {
-      warna = Colors.red;
+      warnaLatar = Colors.red.shade100;
+      warnaTeks = Colors.red.shade900;
       label = 'Habis';
     } else if (stok <= 5) {
-      warna = Colors.amber;
+      warnaLatar = Colors.amber.shade100;
+      warnaTeks = Colors.amber.shade900;
       label = 'Sisa $stok';
     } else {
-      warna = Colors.green;
+      warnaLatar = Colors.green.shade100;
+      warnaTeks = Colors.green.shade900;
       label = 'Stok $stok';
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: warna.shade100,
+        color: warnaLatar,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: FontWeight.bold,
-          color: warna.shade900,
+          color: warnaTeks,
         ),
       ),
     );
   }
 
-  /// Tombol (+) tambah ke keranjang; dinonaktifkan jika stok habis.
-  Widget _buildTombolTambah(Produk produk) {
-    final habis = produk.stok == 0;
+  // Helper pembuat kartu produk di dalam Grid
+  Widget _buildProductCard(Produk item) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0), // Garis pembatas halus slate-200
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08), // Elevasi bayangan lebih tegas
+            blurRadius: 8,
+            spreadRadius: 1,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. FOTO PRODUK (TINGGI 105 SERAGAM)
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: Stack(
+              children: [
+                Image.network(
+                  item.gambarUrl,
+                  height: 105,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    height: 105,
+                    color: Colors.grey.shade200,
+                    child: const Icon(
+                      Icons.fastfood,
+                      size: 36,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+                // Badge diskon promo
+                if (item.diskonPersen > 0)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'PROMO ${item.diskonPersen}%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
 
-    return InkWell(
-      onTap: habis ? null : () {}, // TODO: tambah ke keranjang
-      borderRadius: BorderRadius.circular(15),
-      child: CircleAvatar(
-        radius: 14,
-        backgroundColor: habis ? Colors.grey.shade300 : _biruNavy,
-        child: const Icon(Icons.add, color: Colors.white, size: 16),
+          // 2. DESKRIPSI & HARGA PRODUK (RAPAT & PROPORSIONAL)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.nama,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                _buildBadgeStok(item.stok),
+                const SizedBox(height: 3),
+                Text(
+                  _formatRupiah(item.hargaJual),
+                  style: const TextStyle(
+                    color: Color(0xFF1E3A8A),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+
+          // 3. BARIS TOMBOL AKSI CRUD (EDIT, HAPUS, & TAMBAH KE CART)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Tombol Edit Produk (Ikon Pensil)
+                IconButton(
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    size: 18,
+                    color: Color(0xFF1E3A8A),
+                  ),
+                  tooltip: 'Edit Produk',
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(),
+                  onPressed: () async {
+                    // Navigasi ke Form Edit dengan membawa objek produk
+                    final refresh = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FormProdukPage(produk: item),
+                      ),
+                    );
+                    if (refresh == true) _muatDataProduk();
+                  },
+                ),
+                // Tombol Hapus Produk (Ikon Tempat Sampah)
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 18,
+                    color: Colors.red,
+                  ),
+                  tooltip: 'Hapus Produk',
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _konfirmasiHapusProduk(context, item),
+                ),
+                // Tombol Tambah ke Keranjang Kasir
+                IconButton(
+                  icon: const Icon(
+                    Icons.add_shopping_cart,
+                    size: 18,
+                    color: Color(0xFF1E3A8A),
+                  ),
+                  tooltip: 'Tambah ke Kasir',
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${item.nama} dipilih untuk transaksi kasir',
+                        ),
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: const Row(
+          children: [
+            Icon(Icons.point_of_sale, color: Color(0xFFFBBF24)),
+            SizedBox(width: 8),
+            Text(
+              'SmartKasir',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF1E3A8A),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+            tooltip: 'Tambah Produk Baru',
+            onPressed: () async {
+              final refresh = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FormProdukPage()),
+              );
+              if (refresh == true) _muatDataProduk();
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 1. BANNER TOTAL TRANSAKSI HARIAN
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total Penjualan Hari Ini',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Rp 845.000',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.receipt_long, color: Colors.white, size: 16),
+                      SizedBox(width: 4),
+                      Text(
+                        '34 Transaksi',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 2. KOTAK PENCARIAN CEPAT (SQL LIKE)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (val) {
+                _keywordPencarian = val;
+                _muatDataProduk();
+              },
+              decoration: InputDecoration(
+                hintText: 'Cari nama produk kasir ...',
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF1E3A8A)),
+                suffixIcon: _keywordPencarian.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          _keywordPencarian = '';
+                          _muatDataProduk();
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 0,
+                  horizontal: 16,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // 3. FILTER CHIP HORIZONTAL KATEGORI
+          SizedBox(
+            height: 38,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _kategoriList.length,
+              itemBuilder: (context, index) {
+                final isSelected = _kategoriTerpilih == index;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(_kategoriList[index]),
+                    selected: isSelected,
+                    selectedColor: const Color(0xFF1E3A8A),
+                    backgroundColor: Colors.white,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black87,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 12,
+                    ),
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() {
+                          _kategoriTerpilih = index;
+                          _searchController.clear();
+                          _keywordPencarian = '';
+                          _muatDataProduk();
+                        });
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // 4. DAFTAR KATALOG DENGAN FUTUREBUILDER (DATA PERSISTENSI SQLITE)
+          Expanded(
+            child: FutureBuilder<List<Produk>>(
+              future: _produkFuture,
+              builder: (context, snapshot) {
+                // KONDISI 1: Sedang memuat data (Loading State)
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                // KONDISI 2: Terjadi kesalahan (Error State)
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(
+                        'Terjadi kesalahan memuat database: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                // KONDISI 3: Data Kosong
+                final daftarProduk = snapshot.data ?? [];
+                if (daftarProduk.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.inventory_2_outlined,
+                          size: 60,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _keywordPencarian.isNotEmpty
+                              ? 'Produk "$_keywordPencarian" tidak ditemukan.'
+                              : 'Belum ada produk pada kategori ini.',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                // KONDISI 4: Data Berhasil Dimuat (Success State)
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisExtent: 220, // Kunci tinggi kartu tetap (misal: 215 - 225 px)
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: daftarProduk.length,
+                  itemBuilder: (context, index) {
+                    return _buildProductCard(daftarProduk[index]);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final refresh = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const FormProdukPage()),
+          );
+          if (refresh == true) _muatDataProduk();
+        },
+        backgroundColor: const Color(0xFF1E3A8A),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Tambah Produk'),
       ),
     );
   }

@@ -1,93 +1,119 @@
-/// Model data untuk satu barang dagangan di kasir.
+// Blueprint / Struktur Data (Model) entitas produk kasir ritel SmartKasir
 class Produk {
+  // --- DEKLARASI VARIABEL ATRIBUT MODEL ---
+  final int? id; // ID produk (Nullable '?' karena di-generate otomatis oleh SQLite via AUTOINCREMENT)
+  final String kodeProduk; // Kode unik produk / SKU / Barcode kasir (Tipe: String)
+  final String nama; // Nama barang dagangan (Tipe: String)
+  final String kategori; // Kelompok produk: Makanan / Minuman / Snack (Tipe: String)
+  final double hargaBeli; // Harga beli modal / HPP (Tipe: Double)
+  final double hargaJual; // Harga jual kasir kepada konsumen (Tipe: Double)
+  final int stok; // Sisa kuantitas fisik barang di toko (Tipe: Integer)
+  final String gambarUrl; // URL foto atau path lokal gambar produk (Tipe: String)
+  final int diskonPersen; // Persentase promo diskon kasir (Tipe: Integer, default 0)
+
+  // Konstruktor konstan dengan parameter wajib (required) dan opsional (default)
   const Produk({
-    required this.id,
+    this.id,
+    required this.kodeProduk,
     required this.nama,
     required this.kategori,
-    required this.harga,
+    required this.hargaBeli,
+    required this.hargaJual,
     required this.stok,
     required this.gambarUrl,
     this.diskonPersen = 0,
   });
 
-  /// ID unik produk.
-  final int id;
+  // --- METODE SERIALISASI (DART OBJECT -> SQLITE ROW MAP) ---
+  // Mengonversi objek class Produk menjadi Map<String, dynamic> untuk disimpan ke tabel SQLite
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id, // Nilai kolom id (primary key)
+      'kode_produk': kodeProduk, // Nilai kolom kode SKU produk
+      'nama_produk': nama, // Nilai kolom nama barang
+      'kategori': kategori, // Nilai kolom kategori produk
+      'harga_beli': hargaBeli, // Nilai kolom HPP / modal usaha
+      'harga_jual': hargaJual, // Nilai kolom harga jual ritel
+      'stok': stok, // Nilai kolom jumlah stok fisik barang
+      'gambar_path': gambarUrl, // Nilai kolom path berkas atau URL gambar
+      'diskon_persen': diskonPersen, // Nilai kolom diskon promo
+      'created_at': DateTime.now().toIso8601String(), // Nilai kolom stempel waktu ISO 8601
+    };
+  }
 
-  /// Nama barang dagangan.
-  final String nama;
-
-  /// Kategori produk: Makanan / Minuman / Snack.
-  final String kategori;
-
-  /// Harga jual satuan dalam Rupiah.
-  final double harga;
-
-  /// Sisa persediaan unit barang di toko.
-  final int stok;
-
-  /// Tautan URL foto produk.
-  final String gambarUrl;
-
-  /// Potongan harga dalam persen (0 = tanpa diskon).
-  final int diskonPersen;
+  // --- METODE DESERIALISASI (SQLITE ROW MAP -> DART OBJECT) ---
+  // Membaca baris data (Map) hasil kueri SELECT dari tabel SQLite dan mengubahnya menjadi objek Produk
+  factory Produk.fromMap(Map<String, dynamic> map) {
+    return Produk(
+      id: map['id'] as int?, // Parsing kolom id sebagai integer nullable
+      kodeProduk: map['kode_produk'] as String, // Parsing kolom kode_produk sebagai String
+      nama: map['nama_produk'] as String, // Parsing kolom nama_produk sebagai String
+      kategori: map['kategori'] as String, // Parsing kolom kategori sebagai String
+      hargaBeli: (map['harga_beli'] as num).toDouble(), // Konversi aman num ke double untuk harga beli
+      hargaJual: (map['harga_jual'] as num).toDouble(), // Konversi aman num ke double untuk harga jual
+      stok: map['stok'] as int, // Parsing kolom stok sebagai integer
+      gambarUrl: map['gambar_path'] as String? ?? '', // String kosong jika path bernilai null
+      diskonPersen: map['diskon_persen'] as int? ?? 0, // Nilai 0 jika kolom diskon bernilai null
+    );
+  }
 }
 
-/// Data dummy produk untuk simulasi katalog kasir tanpa database.
-final List<Produk> daftarProdukDummy = [
+// --- DATA SEEDING AWAL PRODUK BAWAAN SMARTKASIR ---
+// Daftar 6 produk awal ritel untuk mengisi database SQLite saat pertama kali dibuat
+final List<Produk> produkAwalSQLite = [
   const Produk(
-    id: 1,
+    kodeProduk: 'PRD-001',
     nama: 'Kopi Susu Gula Aren 250ml',
     kategori: 'Minuman',
-    harga: 18000,
-    stok: 24, // Aman (> 5) -> badge hijau
-    gambarUrl:
-        'https://images.unsplash.com/photo-1541167760496-1628856ab772?w=300',
-    diskonPersen: 20, // Menambahkan diskon promo 20% khusus produk ini
+    hargaBeli: 10000,
+    hargaJual: 18000,
+    stok: 24,
+    gambarUrl: 'https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500',
   ),
   const Produk(
-    id: 2,
+    kodeProduk: 'PRD-002',
     nama: 'Roti Bakar Cokelat Keju',
     kategori: 'Makanan',
-    harga: 15000,
-    stok: 5, // Menipis (<= 5) -> badge kuning
-    gambarUrl:
-        'https://images.unsplash.com/photo-1584776296944-ab6fb57b0bdd?w=300',
+    hargaBeli: 8000,
+    hargaJual: 15000,
+    stok: 5,
+    gambarUrl: 'https://images.unsplash.com/photo-1584776296944-ab6fb57b0bdd?w=500',
   ),
   const Produk(
-    id: 3,
+    kodeProduk: 'PRD-003',
     nama: 'Matcha Latte Ice',
     kategori: 'Minuman',
-    harga: 22000,
-    stok: 0, // Habis (== 0) -> badge merah, tombol dinonaktifkan
-    gambarUrl:
-        'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=300',
+    hargaBeli: 12000,
+    hargaJual: 22000,
+    stok: 0,
+    gambarUrl: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=500',
   ),
   const Produk(
-    id: 4,
+    kodeProduk: 'PRD-004',
     nama: 'Nasi Goreng Banjar Spesial',
     kategori: 'Makanan',
-    harga: 25000,
+    hargaBeli: 15000,
+    hargaJual: 25000,
     stok: 12,
-    diskonPersen: 10, // Ada promo -> tampilkan badge diskon
-    gambarUrl:
-        'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=300',
+    gambarUrl: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=500',
+    diskonPersen: 10,
   ),
   const Produk(
-    id: 5,
-    nama: 'Kentang Goreng Crispy',
+    kodeProduk: 'PRD-005',
+    nama: 'Keripik Singkong Pedas Manis',
     kategori: 'Snack',
-    harga: 12000,
-    stok: 18,
-    gambarUrl:
-        'https://images.unsplash.com/photo-1576107232684-1279f3908594?w=300',
+    hargaBeli: 6000,
+    hargaJual: 12000,
+    stok: 30,
+    gambarUrl: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=500',
   ),
-  const Produk(
-    id: 6,
-    nama: 'Air Mineral Botol 600ml',
-    kategori: 'Minuman',
-    harga: 5000,
-    stok: 40,
-    gambarUrl:
-        'https://images.unsplash.com/photo-1523362628745-0c100150b504?w=300',
+    const Produk(
+    kodeProduk: 'PRD-006',
+    nama: 'Pisang Goreng Pasir Crispy',
+    kategori: 'Snack',
+    hargaBeli: 7000,
+    hargaJual: 14000,
+    stok: 8,
+    gambarUrl: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500',
   ),
 ];

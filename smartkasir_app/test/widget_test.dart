@@ -1,30 +1,40 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:smartkasir_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Splash screen menghitung mundur lalu pindah ke halaman utama', (
+    WidgetTester tester,
+  ) async {
+    // Bangun aplikasi dan render frame pertama.
+    await tester.pumpWidget(const SmartKasirApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Splash screen tampil dengan hitung mundur 10 detik.
+    expect(find.text('SmartKasir'), findsOneWidget);
+    expect(
+      find.text('Menyiapkan sistem SmartKasir (10 detik)...'),
+      findsOneWidget,
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Setelah 3 detik, hitungan tersisa 7 detik.
+    await tester.pump(const Duration(seconds: 3));
+    expect(
+      find.text('Menyiapkan sistem SmartKasir (7 detik)...'),
+      findsOneWidget,
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Sisa 7 detik habis: aplikasi pindah ke MainNavigationPage.
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(
+      const Duration(seconds: 1),
+    ); // Selesaikan animasi transisi
+
+    // Splash screen hilang, halaman utama (tab Beranda + Dashboard) tampil.
+    expect(find.textContaining('detik'), findsNothing);
+    expect(find.text('Beranda'), findsOneWidget);
+    expect(find.text('Total Penjualan Hari Ini'), findsOneWidget);
+
+    // Badge promo dari Live Tweak 3 muncul di produk Kopi Susu.
+    expect(find.text('PROMO 20%'), findsOneWidget);
   });
 }
